@@ -104,56 +104,87 @@ def ismember(v, matrix):
 # Outputs: list of orders of each element. The order of the parent node can't be found with this algorithm
 #          and is assumed to be one higher than the last order assigned
 ######
-def get_strahler_order(nodes, elems_orignal, inlet_loc):
+def get_strahler_order(geom, inlet_loc):
 
     #set up arrays
-    elems = np.copy(elems_orignal)  # as elems is altered in this function
+    nodes=geom['nodes']
+    radii = geom['radii']
+    length = geom['length']
+    euclid_length = geom['euclidean length']
+    elems = np.copy(geom['elems'])  # as elems is altered in this function
     elems=elems[:,1:3] #get rid of first column which means nothing
+
     Ne = len(elems)
     Nn = len(nodes)
+    elems_new = np.zeros([Ne, 2])
+    radii_new = np.zeros([Ne, 1])
+    len_new = np.zeros([Ne, 1])
+    euclid_len_new = np.zeros([Ne, 1])
     strahler_order = np.zeros([Ne, 1])
 
     # find root node and element from its physical location
     Nn_root=ismember(inlet_loc, nodes)
     if (Nn_root==-1):
         print("Warning, root node not located")
-    Ne_root=np.where(elems==Nn_root)
-    Ne_root=Ne_root[0] #only need first index
-
+    #find root element
+    Ne_place=np.where(elems==Nn_root)
+    Ne_root = Ne_place[0]  # only need first index
     if len(Ne_root) > 1:
         print("Warning, root node is associated with multiple elements")
     if len(Ne_root) == 0:
         print("Warning, no root element located")
+    # make root element the first element
     Ne_root = Ne_root[0]
+    placeholder = elems[0, :]
+    elems[0, :] = elems[Ne_root, :]
+    elems[Ne_root, :] = placeholder
+    placeholder = radii[0]
+    radii[0] = radii[Ne_root]
+    radii[Ne_root] = placeholder
+    placeholder = length[0]
+    length[0] = length[Ne_root]
+    length[Ne_root] = placeholder
+    placeholder = euclid_length[0]
+    euclid_length[0] = euclid_length[Ne_root]
+    euclid_length[Ne_root] = placeholder
+    #get element pointing right way
+    if (np.squeeze(Ne_place[1])!= 0):
+        elems[Ne_root,1]=elems[Ne_root,0]
+        elems[Ne_root,0]=Nn_root
 
     #find orders
     counter=1
+    counter_new_order=0
     while (counter<Ne):
-
         # find elements which are terminal
         terminal_elems = np.zeros([Ne, 1])
 
         for i in range(0, Nn+1):
-
             places = np.where(elems == i) #find number of occurences of the node
             ind1=places[0]
             ind2 = places[1]
 
-            if (len(ind1) == 1) and ((ind1[0]) != Ne_root): #if occurs once, then element is terminal
+            if (len(ind1) == 1) and ((ind1[0]) != 0): #if occurs once, then element is terminal
 
                 ind1 = ind1[0]
                 ind2 = ind2[0]
 
-                if (ind2==0): #proposed fix
-                    placeholder=np.copy(elems_orignal[ind1, 2])
-                    elems_orignal[ind1, 2]=int(np.copy(elems_orignal[ind1, 1]))
-                    elems_orignal[ind1, 1]=int(placeholder)
+                if ind2==0: #swap to ensure element points right way
+                    placeholder = np.copy(elems[ind1, 1])
+                    elems[ind1, 1] = int(np.copy(elems[ind1, 0]))
+                    elems[ind1, 0] = int(placeholder)
+
+                elems_new[counter_new_order, :] = elems[ind1, :]
+                radii_new[counter_new_order, :] = radii[ind1]
+                len_new[counter_new_order, :] = length[ind1]
+                euclid_len_new[counter_new_order, :] = euclid_length[ind1]
+                counter_new_order=counter_new_order+1
 
                 terminal_elems[ind1] = 1
-                iNew = elems[ind1, ~ind2] #this is node number at other end of element
-                [terminal_elems, elems_orignal] = join_elements(terminal_elems, elems, elems_orignal, i, iNew) #find elements that join this element without branching
+                iNew = elems[ind1, 0] #this is node number at other end of element
+                [terminal_elems, elems_new,len_new, euclid_len_new, radii_new, counter_new_order] = join_elements(terminal_elems, elems, elems_new,len_new, euclid_len_new, radii_new,length, euclid_length, radii, counter_new_order,i, iNew) #find elements that join this element without branching
 
-        terminal_elems[Ne_root]= 0 #the root node can never be terminal
+        terminal_elems[0]= 0 #the root node can never be terminal
 
         strahler_order[terminal_elems == 1] = counter #assign order to terminal elems
 
@@ -166,19 +197,31 @@ def get_strahler_order(nodes, elems_orignal, inlet_loc):
         if len(inds)==0:
             counter = Ne+1
         else:
-            strahler_order[Ne_root] = counter +1  # assume the root is one higher than last order assigned
+            strahler_order[0] = counter +1  # assume the root is one higher than last order assigned
 
         counter = counter + 1
 
     strahler_order=np.squeeze(strahler_order)
-    return (strahler_order, elems_orignal)
+
+    elems_new[Ne-1, :] = elems[0, :]
+    radii_new[Ne-1, :] = radii[0]
+    len_new[Ne-1, :] = length[0]
+    euclid_len_new[Ne-1, :] = euclid_length[0]
+
+    elems_new=np.flip(elems_new,0)
+    radii_new = np.flip(radii_new, 0)
+    len_new = np.flip(len_new, 0)
+    euclid_len_new = np.flip(euclid_len_new, 0)
+    elems=geom['elems']
+    elems[:,1:3]=elems_new
+    return {'strahler_order': strahler_order, 'elems': elems, 'radii': radii_new,'length': len_new, 'euclidean length': euclid_len_new, 'nodes': nodes}
 
 ######
 # This function joins up elements which attach with no branching by making them also terminal
 # Inputs: list of elements, terminal elements and the number number for the node, and the previous node
 # Outputs: updates terminal elements so that joining elements are also marked as terminal
 ######
-def join_elements(terminal_elems, elems, elems_orignal, nodeNum, nodeNumNew):
+def join_elements(terminal_elems, elems, elems_new, len_new, euclid_len_new, radii_new,length, euclid_length, radii, counter_new_order, nodeNum, nodeNumNew):
 
     Ne=len(elems)
 
@@ -191,7 +234,7 @@ def join_elements(terminal_elems, elems, elems_orignal, nodeNum, nodeNumNew):
 
         #label element terminal as is a joining elements
         terminal_elems[ind1[0]]=1
-        terminal_elems[ind1[1]] = 1
+        terminal_elems[ind1[1]]=1
 
         #see if branch joins to yet another branch, that we haven't yet encountered (i.e. not nodeNum)
         if (elems[ind1[0], ~ind2[0]]==nodeNum):
@@ -199,34 +242,37 @@ def join_elements(terminal_elems, elems, elems_orignal, nodeNum, nodeNumNew):
         else:
             k=0
 
+        #switch the way element pointd
+        if (ind2[k] == 0):
+            placeholder = np.copy(elems[ind1[k], 1])
+            elems[ind1[k], 1] = int(np.copy(elems[ind1[k], 0]))
+            elems[ind1[k], 0] = int(placeholder)
         nodeNum = nodeNumNew
-        nodeNumNew = elems[ind1[k], ~(ind2[k])]
+        nodeNumNew = elems[ind1[k], 0]
 
-        if (ind2[0] == 0): #the fix proposed to make alys' code work
-            placeholder = np.copy(elems_orignal[ind1[0], 2])
-            elems_orignal[ind1[0], 2] = int(np.copy(elems_orignal[ind1[0], 1]))
-            elems_orignal[ind1[0], 1] = int(placeholder)
-
-        if (ind2[1] == 0):
-            placeholder = np.copy(elems_orignal[ind1[1], 2])
-            elems_orignal[ind1[1], 2] = int(np.copy(elems_orignal[ind1[1], 1]))
-            elems_orignal[ind1[1], 1] = int(placeholder)
+        #if ismember(np.squeeze(elems[ind1[k],:]),elems_new[0:counter_new_order])==-1:
+        elems_new[counter_new_order, :] = elems[ind1[k], :]
+        radii_new[counter_new_order, :] = radii[ind1[k]]
+        len_new[counter_new_order, :] = length[ind1[k]]
+        euclid_len_new[counter_new_order, :] = euclid_length[ind1[k]]
+        counter_new_order = counter_new_order + 1
 
         #update loop criteria
         places = np.where(elems == nodeNumNew)
         ind1 = places[0]
         ind2 = places[1]
         counter = counter + 1
-    return (terminal_elems, elems_orignal)
+    return (terminal_elems, elems_new, len_new, euclid_len_new, radii_new, counter_new_order)
 
 ######
 # This function removes terminal elements that connect to high order branches
 # Inputs: geom, all the info about the skeleton and threshold order shich is the parent branch is equal to order higher than, the terminal branch is removed
 # Outputs: removes elements that are unwanted and also removed corresponding rows from other data
 ######
-def prune_by_order(geom, threshold_order):
+def prune_by_order(geom, ordersAll, threshold_order):
+
+     orders=ordersAll['strahler']
      elems=geom['elems']
-     orders=geom['strahler_order']
      elems=elems[:,1:3]
 
      terminalList = np.where(orders == 1)
@@ -254,13 +300,14 @@ def prune_by_order(geom, threshold_order):
 
      # get rid of elements
      i = 0
-     while (i < len(geom['strahler_order'])):
+     while (i < len(geom['radii'])):
           if (elems[i][0] < 0):
               # get rid of element, from elements and from other variables
               geom['length'] = np.delete(geom['length'], (i), axis=0)
               geom['euclidean length'] = np.delete(geom['euclidean length'], (i), axis=0)
               geom['radii'] = np.delete(geom['radii'], (i), axis=0)
-              geom['strahler_order']= np.delete(geom['strahler_order'], (i), axis=0)
+              ordersAll['strahler']= np.delete(ordersAll['strahler'], (i), axis=0)
+              ordersAll['generation'] = np.delete(ordersAll['generation'], (i), axis=0)
               geom['elems'] = np.delete(geom['elems'], (i),axis=0)
               elems = np.delete(elems, (i), axis=0)
           else:
@@ -291,13 +338,15 @@ def find_branch_angles(nodes, elems, orders):
 
         if num_branches>2:  # then it is a branching node
 
-            # find highest order branch
+            # find lower generation branch
             order_list=orders[ind1]
-            order_max=max(order_list)
-            n_max=np.where(order_list==order_max)
-            n_max=n_max[0]
-            for i in range(0, len(n_max)): # as if has two higher order parents, will find both and take lower order angle
-                nm = n_max[i]
+            order_min=min(order_list)
+            n_min=np.where(order_list==order_min)
+            n_min=n_min[0]
+            for i in range(0, len(n_min)): # as if has two higher order parents, will find both and take lower order angle
+                if len(n_min)>1:
+                    print(len(n_min))
+                nm = n_min[i]
                 #find parent
                 endNode=int(elems[ind1[nm], ~ind2[nm]])
                 startNode=int(elems[ind1[nm], ind2[nm]])
@@ -305,7 +354,7 @@ def find_branch_angles(nodes, elems, orders):
                 v_parent = v_parent / np.linalg.norm(v_parent)
 
                 for nb in range (0, num_branches):
-                    if (order_list[nb]<order_max):
+                    if (order_list[nb]>order_min):
 
                         #find daughter
                         endNode = int(elems[ind1[nb], ~ind2[nb]])

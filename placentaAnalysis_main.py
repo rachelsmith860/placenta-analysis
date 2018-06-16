@@ -25,10 +25,11 @@ print('Organizing Data')
 geom=sort_data(data_file)
 
 print('Analysing Skeleton')
-[geom['strahler_order'],geom['elems']] = get_strahler_order(geom['nodes'], geom['elems'], inlet_loc)
+geom = get_strahler_order(geom, inlet_loc) #strahler order is now broken, as goes by old element order
+orders=pg.evaluate_orders(geom['nodes'],geom['elems'])
 threshold_order=5
-geom=prune_by_order(geom, threshold_order)
-geom['branch_angles'] = find_branch_angles(geom['nodes'], geom['elems'], geom['strahler_order'])
+geom=prune_by_order(geom, orders, threshold_order) #needs some looking at
+geom['branch_angles'] = find_branch_angles(geom['nodes'], geom['elems'], orders['generation'])# need to fix
 
 #scale results into mm and degrees
 geom['radii']=geom['radii']*voxelSize/conversionFactor
@@ -43,18 +44,14 @@ table = summary_statistics(geom['strahler_order'], geom['length'], geom['euclide
 
 #csv files
 elems=geom['elems']
-outPutData=np.column_stack([elems[:,1:3], geom['radii'], geom['branch_angles'], geom['strahler_order']])
-np.savetxt('ElementInfo.csv', outPutData, fmt='%.2f', delimiter=',', header=" ,elems,  radii(mm),  angles(degrees),  order")
-np.savetxt('NodeInfo.csv', geom['nodes'], fmt='%.4f', delimiter=',', header=" ,nodes(voxels)")
+#outPutData=np.column_stack([elems[:,1:3], geom['radii'], geom['branch_angles'], geom['strahler_order']])
+#np.savetxt('ElementInfo.csv', outPutData, fmt='%.2f', delimiter=',', header=" ,elems,  radii(mm),  angles(degrees),  order")
+#np.savetxt('NodeInfo.csv', geom['nodes'], fmt='%.4f', delimiter=',', header=" ,nodes(voxels)")
 
 #cmgui files
-pg.export_ex_coords(geom['nodes'],'placenta','full_tree','exnode')
-pg.export_exelem_1d(geom['elems'],'placenta','full_tree')
+#pg.export_ex_coords(geom['nodes'],'placenta','full_tree','exnode')
+#pg.export_exelem_1d(geom['elems'],'placenta','full_tree')
+
 
 #3d plots
-plotVasculature3D(geom['nodes'], geom['elems'], geom['strahler_order'], geom['radii'])
-
-#Placenta Gen Stuff - doesn't work
-#orders=pg.evaluate_orders(geom['nodes'],geom['elems'])
-#3d plots
-#plotVasculature3D(geom['nodes'], geom['elems'], orders['generation'],geom['radii'])
+plotVasculature3D(geom['nodes'], geom['elems'], geom['branch_angles'],geom['radii'])

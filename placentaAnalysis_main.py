@@ -35,9 +35,9 @@ orders['strahler']=strahler
 
 #Prune elements by order and re-evaluate generation
 threshold_order=4
-geom=prune_by_order(geom, orders, threshold_order)
-order2=evaluate_orders(geom['nodes'],geom['elems'])
-geom['branch_angles'] = find_branch_angles(geom['nodes'], geom['elems'], order2['generation'])# need to  ################################
+(geom, strahler)=prune_by_order(geom, orders, threshold_order)
+orders=evaluate_orders(geom['nodes'],geom['elems'])
+(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], orders['generation'], orders['strahler'])
 
 #scale results into mm and degrees
 geom['radii']=geom['radii']*voxelSize/conversionFactor
@@ -48,18 +48,18 @@ geom['branch_angles']=geom['branch_angles']*180/np.pi
 #Output Skeleton Info
 print('Output Data')
 #table
-table=summary_statistics(orders['strahler'],order2['generation'], geom['length'],geom['euclidean length'], geom['radii'],geom['branch_angles'],geom['branch_angles'],geom['branch_angles']) #fix the last 2 inputs once they are done
+table=summary_statistics(orders['strahler'],orders['generation'], geom['length'],geom['euclidean length'], geom['radii'],geom['branch_angles'],geom['diam_ratio'],geom['length_ratio'])
 
 #3d plots
 print('Plotting')
-plotVasculature3D(geom['nodes'], geom['elems'], order2['generation'],geom['radii'])
+plotVasculature3D(geom['nodes'], geom['elems'], geom['branch_angles'],geom['radii'])
 
 #csv files
 output=0
 if output:
     print('Writing files')
     elems=geom['elems']
-    outPutData=np.column_stack([elems[:,1:3], geom['radii'], geom['branch_angles'], geom['strahler_order']])
+    outPutData=np.column_stack([elems[:,1:3], geom['radii'], geom['branch_angles'], strahler])
 
     np.savetxt('ElementInfo.csv', outPutData, fmt='%.2f', delimiter=',', header=" ,elems,  radii(mm),  angles(degrees),  order")
     np.savetxt('NodeInfo.csv', geom['nodes'], fmt='%.4f', delimiter=',', header=" ,nodes(voxels)")

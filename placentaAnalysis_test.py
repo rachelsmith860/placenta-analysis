@@ -2,7 +2,6 @@ import numpy as np
 import math
 import pandas as pd
 from placentaAnalysisFunctions import *
-import placentagen as pg
 
 ######
 # Tests all Placenta Analysis Functions with a test case
@@ -10,7 +9,37 @@ import placentagen as pg
 # Outputs: Types to screen whether each function provides the correct output, by comparing it against hand calculated solutions
 ######
 
-#Load file
+#Load test answer file
+with open('test_tree_answers.csv') as csvDataFile:
+    data_file = pd.read_csv(csvDataFile, usecols=['nx','ny','nz','e0','e1','e2','e0_ordered','e1_ordered','e2_ordered','angle','diamR','lengthR','order','generation1','generation2','e0_ordered_2','e1_ordered_2','e2_ordered_2'])
+    data_file.columns = ['nx','ny','nz','e0','e1','e2','e0_ordered','e1_ordered','e2_ordered','angle','diamR','lengthR','order','generation1','generation2','e0_ordered_2','e1_ordered_2','e2_ordered_2']
+
+#get skeleton properties as arrays
+generation1_true=data_file.generation1.values
+generation2_true=data_file.generation2.values
+diam_ratio_true=data_file.diamR.values
+length_ratio_true=data_file.lengthR.values
+order_true=data_file.order.values
+angles_true=data_file.angle.values
+order_true=order_true[0:11]
+generation1_true=generation1_true[0:11]
+generation2_true=generation2_true[0:10]
+angles_true=angles_true[0:10]
+diam_ratio_true=diam_ratio_true[0:10]
+length_ratio_true=length_ratio_true[0:10]
+
+
+data_file=data_file.drop(['angle','diamR','lengthR','order','generation1','generation2'], axis=1)
+data_file=data_file.values
+nodes_true=data_file[:,0:3]
+elems_unordered_true=data_file[:, 3:6]
+elems_unordered_true=elems_unordered_true[0:11,:]
+elems_ordered_true=data_file[:, 6:9]
+elems_ordered_true=elems_ordered_true[0:11,:]
+elems_pruned_true=data_file[:, 9:12]
+elems_pruned_true=elems_pruned_true[0:10,:]
+
+#Load test file
 with open('test_tree.csv') as csvDataFile:
     data_file = pd.read_csv(csvDataFile, usecols=['Skeleton ID', 'Branch length', 'V1 x', 'V1 y', 'V1 z', 'V2 x', 'V2 y', 'V2 z', 'Euclidean distance', 'average intensity (inner 3rd)'])
     data_file.columns = ['SkeletonID', 'Branchlength', 'V1x', 'V1y', 'V1z', 'V2x', 'V2y', 'V2z', 'Euclideandistance', 'averageintensityinner3rd']
@@ -19,51 +48,54 @@ with open('test_tree.csv') as csvDataFile:
 print('\nTest Sort Elems')
 geom=sort_data(data_file)
 
-nodes_true=np.array([[0.,0.,1.],[0., 0., 0.],[0.,1.,0.],[0.,-1.,0.],[0.,1.,-1.],[0.,-1.,-1.],[-3,-3,-3],[1.,2.,-1.],[-1.,2.,-1.],[1.,-2.,-1.],[-1.,-2.,-1.]])
-if np.array_equal(geom['nodes'], nodes_true):
-    print('Nodes correct')
-else:
-    print('Nodes INCORRECT')
+np.testing.assert_equal(geom['nodes'], nodes_true)
+np.testing.assert_equal(geom['elems'], elems_unordered_true)
 
-elems_true=np.array([[0.,0.,1],[1, 1, 2],[2,1,3],[3,2,4],[4,3,5],[5,4,7],[6,4,8],[7,5,9],[8,5,10]])
-if np.array_equal(geom['elems'], elems_true):
-    print('Elems correct')
-else:
-    print('Elems INCORRECT')
+#Arrange by strahler order
+print('\nTest Arrange by Order')
+inlet_loc=np.array([0,0,2])
+geom= arrange_by_strahler_order(geom, inlet_loc)
+
+#np.testing.assert_equal(geom['elems'], elems_ordered_true)
 
 #Get order
-print('\nTest Strahler Order')
-inlet_loc=np.array([0,0,1])
-geom= get_strahler_order(geom, inlet_loc)
+print('\nTest Ordering')
+orders=evaluate_orders(geom['nodes'],geom['elems'])
+strahler=orders['strahler']
+strahler[0]=strahler[1] #as pg doesn't find this order
+orders['strahler']=strahler
 
-order_true=np.array([3.,2.,2.,2.,2.,1.,1.,1.,1.])
-#if np.array_equal(geom['strahler_order'], order_true):
-#    print('Order correct')
-#else:
-#    print('Order incorrect')
+np.testing.assert_equal(orders['strahler'], order_true)
+np.testing.assert_equal(orders['generation'], generation1_true)
 
-#Get branch angles
+#Test prune and reorder
+threshold_order=2
+(geom,strahler)=prune_by_order(geom, orders, threshold_order)
+order2=evaluate_orders(geom['nodes'],geom['elems'])
+
+print('\nTest Prune and Re-Ordering')
+np.testing.assert_equal(order2['generation'], generation2_true)
+np.testing.assert_equal(geom['elems'], elems_pruned_true)
+
+#Test angles
 print('\nTest Branch Angles')
-orders=pg.evaluate_orders(geom['nodes'],geom['elems'])
-geom['branch_angles']=find_branch_angles(geom['nodes'], geom['elems'], orders['generation'])
+(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], order2['generation'], order2['strahler'])
 
-angles_true=np.array([-1,np.pi/2,np.pi/2,-1,-1,np.pi/2,np.pi/2,np.pi/2,np.pi/2])
-if np.array_equal(geom['branch_angles'], angles_true):
-    print('Angles correct')
-else:
-    print('Angles incorrect')
+np.testing.assert_equal(np.around(geom['branch_angles'],2), np.around(angles_true,2))
+np.testing.assert_equal(np.around(geom['diam_ratio'],2), np.around(diam_ratio_true,2))
+np.testing.assert_equal(np.around(geom['length_ratio'],2), np.around(length_ratio_true,2))
+
 
 #Output Skeleton Info
 print('\nOutput Table')
-table=summary_statistics(orders['strahler'],orders['generation'], geom['length'],geom['euclidean length'], geom['radii'],geom['branch_angles'],geom['branch_angles'],geom['branch_angles'])
-#table_true=np.array([[1,4,4,1.15, math.sqrt(2),4.5,(1.2/20+1.1/16),1.15/math.sqrt(2), np.pi/2],[2,4,2, 2.3,2,9,((1.1/20+1.2/20+1.1/16+1.2/16)/4),1.15, np.pi/2],[3, 1,1, 1.1,1,20, 1.1/40, 1.1, np.nan]])
+table=summary_statistics(orders['strahler'],orders['generation'], geom['length'],geom['euclidean length'], geom['radii'],geom['branch_angles'],geom['diam_ratio'],geom['length_ratio'])
 
-#table=np.float16(table) #to discount small errors associated with precision of floating point numbers
-#table_true=np.float16(table_true)
+with open('test_tree_table.csv') as csvDataFile:
+    data_file = pd.read_csv(csvDataFile, usecols=['ord','N','N_joined','Len','Len_e','Rad','Len/Diam','Tort','Angle'])
+    data_file.columns = ['ord','N','N_joined','Len','Len_e','Rad','Len/Diam','Tort','Angle']
+    table_true=data_file.values[0:4,:]
 
-#np.testing.assert_equal(table, table_true)
-#print('Table correct')
+np.testing.assert_equal(np.around(table,2), np.around(table_true,2))
 
-#PG
 #3d plots
-plotVasculature3D(geom['nodes'], geom['elems'], geom['branch_angles'],geom['radii'])
+plotVasculature3D(geom['nodes'], geom['elems'], order2['generation'],geom['radii'])

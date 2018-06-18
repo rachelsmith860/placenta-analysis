@@ -255,30 +255,33 @@ def prune_by_order(geom, ordersAll, threshold_order):
 
      # get rid of dud elements
      (elems, [geom['length'],geom['euclidean length'],geom['radii'],ordersAll['strahler'],ordersAll['generation'],geom['elems']])=removeRows(elems, [geom['length'],geom['euclidean length'],geom['radii'],ordersAll['strahler'],ordersAll['generation'],geom['elems']])
-     return geom
+     return (geom, ordersAll['strahler'])
 
 ######
 # This function finds branch angles of nodes
 # Inputs: list of nodes, elements and their generation
 # Outputs: list of branch angles in radians, where the angle is the angle of a given element from its parents, and is zero if the element is a continuation of the parent
 ######
-def find_branch_angles(nodes, elems, generations): #######################needs fixing + add in finding diameter and length ratios
+def find_branch_angles(nodes, elems, radii, lengths, generations, orders):
     connectivity=pg.pg_utilities.element_connectivity_1D(nodes, elems)
     elem_up=connectivity['elem_up']
+    elem_down = connectivity['elem_down']
 
     num_elems = len(elems)
     elems = elems[:, 1:3] #get rid of useless first column
     branch_angles = -1. * np.ones(num_elems)
+    diam_ratio = -1. * np.ones(num_elems)
+    length_ratio = -1. * np.ones(num_elems)
 
     #find angle for each element
     error=0
-    for ne in range(0, num_elems):
+    for ne in range(1, num_elems):
 
         neUp=elem_up[ne,1]
 
         if elem_up[ne,0]!=1:
             error=error+1
-        elif generations[neUp]<generations[ne]: #then there is a branch at this node
+        elif (generations[neUp]<generations[ne]) & (orders[neUp]>orders[ne]): #then there is a branch at this node, this has been defined to that only branches that create a new order are included i.e. "continuation" branches aren't counted (if you change this, then counting of elements at each order will need to be altered)
 
             #parent node
             endNode=int(elems[neUp, 0])
@@ -286,16 +289,43 @@ def find_branch_angles(nodes, elems, generations): #######################needs 
             v_parent = nodes[endNode, :] - nodes[startNode,:]
             v_parent = v_parent / np.linalg.norm(v_parent)
 
+            d_parent=radii[neUp]
+            L_parent=lengths[neUp]
+
+            nextUp = elem_up[neUp, 1]
+            continueLoop=1
+            while (orders[nextUp]==orders[neUp])& continueLoop: #loop through to add joining branches
+                L_parent=L_parent+lengths[nextUp]
+                if elem_up[nextUp,0]>0:
+                    nextUp=elem_up[nextUp,1]
+                else:
+                    continueLoop=0
+
             #daughter
             endNode = int(elems[ne, 1])
             startNode = int(elems[ne, 0])
             v_daughter = nodes[startNode, :] - nodes[endNode, :]
             v_daughter=v_daughter/np.linalg.norm(v_daughter)
 
+            d_daughter=radii[ne]
+            L_daughter=lengths[ne]
+
+            nextDown = elem_down[ne, 1]
+            continueLoop=1
+            while (orders[nextDown]==orders[ne])& continueLoop: #loop through to add joining branches
+                L_daughter=L_daughter+lengths[nextDown]
+                if elem_down[nextDown,0]==1: #as can only be one daughter if unbranching
+                    nextDown=elem_down[nextDown,1]
+                else:
+                    continueLoop=0
+
             branch_angles[ne] = np.arccos(np.dot(v_parent, v_daughter))
+            if d_parent!=0:
+                diam_ratio[ne]=d_daughter/d_parent
+            length_ratio[ne] = L_daughter / L_parent
 
     print('Number of elements for which no angle could be found (no unqiue parent) = ' +str(error))
-    return (branch_angles)
+    return (branch_angles, diam_ratio, length_ratio)
 
 ######
 # This function finds statistics on branching tree
@@ -319,6 +349,7 @@ def summary_statistics(orders, generation, length, euclid_length, radii, branch_
     length_ord = np.zeros(num_orders)
     length_diam_ord= np.zeros(num_orders)
 
+    extra=0
     for n_ord in range(0, num_orders):
 
         elem_list = (orders==n_ord+1)
@@ -338,6 +369,7 @@ def summary_statistics(orders, generation, length, euclid_length, radii, branch_
         if (number_ord[n_ord]==0):
             number_ord[n_ord]=1
             angle_ord[n_ord]=np.nan
+            extra=extra+1
         else:
             angle_ord[n_ord]=np.mean(branch_list)
 
@@ -368,10 +400,12 @@ def summary_statistics(orders, generation, length, euclid_length, radii, branch_
     branch_list = np.extract(elem_list, branch_angles)
     branch_list = branch_list[(branch_list > -1)]  # for actual distinct branches
     angle_overall = np.mean(branch_list)
-    table = np.column_stack([-1, (len(np.extract(elem_list, elem_list))), len(branch_list), np.sum(length)/len(branch_list), np.sum(euclid_length)/len(branch_list), np.mean(radii), length_diam_overall,np.mean(length/euclid_length), angle_overall])
+    N=len(branch_list) + extra
+    N2=len(np.extract(elem_list, elem_list))
+    table2 = np.column_stack([-1, N2, N, np.sum(length)/N, np.sum(euclid_length)/N, np.mean(radii), length_diam_overall,np.mean(length/euclid_length), angle_overall])
     header = ['     ', '               ', '      ', '          ', '                    ', '          ', '        ',
               '          ', '              ']
-    print(tabulate(table, headers=header))
+    print(tabulate(table2, headers=header))
     print('\n')
 
     #Other statistics
@@ -379,14 +413,15 @@ def summary_statistics(orders, generation, length, euclid_length, radii, branch_
     print('..................')
     print('Num generations = ' + str(max(generation))) #note that this value is calculated after pruning
     terminalGen = generation[(orders == 1)]
+    terminalGen = generation[(orders == 1)]
     print('Terminal generation = ' + str(np.mean(terminalGen)))
-    diam_ratio = diam_ratio[(diam_ratio > -1)]
+    diam_ratio = diam_ratio[(diam_ratio > 0)]
     length_ratio = length_ratio[(length_ratio > -1)]
     print('D/Dparent = ' + str(np.mean(diam_ratio)))
     print('L/Lparent = ' + str(np.mean(length_ratio)))
     print('\n')
 
-    return table
+    return np.concatenate([table,table2])
 
 
 

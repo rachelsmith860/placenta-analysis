@@ -26,7 +26,7 @@ def removeRows(mainArray, Arrays):
 # This function swaps two rows of an array
 ######
 def rowSwap2d(array, row1, row2):
-    placeholder = array[row1, :]
+    placeholder = np.copy(array[row1, :])
     array[row1, :] = array[row2, :]
     array[row2, :] = placeholder
     return array
@@ -35,7 +35,7 @@ def rowSwap2d(array, row1, row2):
 # This function swaps two rows of an array
 ######
 def rowSwap1d(array, row1, row2):
-    placeholder = array[row1]
+    placeholder = np.copy(array[row1])
     array[row1] = array[row2]
     array[row2] = placeholder
     return array

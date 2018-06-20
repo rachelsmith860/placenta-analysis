@@ -94,7 +94,7 @@ def plotVasculature3D(nodes, elems, colour, radii):
         colourValue=np.asarray(cm.jet(int(colour[i])))
         ax.plot(x1,y1,z1, c=colourValue[0:3],linewidth=radii[i])
 
-    ax.set_aspect('equal')
+    #ax.set_aspect('equal')
     plt.show()
 
     return 0
@@ -102,7 +102,7 @@ def plotVasculature3D(nodes, elems, colour, radii):
 ############
 # This function is taken from placentagen, but has some modifications, because the tree from image analysis does not follow all the rules of a generated tree
 ############
-def evaluate_orders(node_loc, elems):
+def evaluate_orders(node_loc, elems, Nc):
     # calculates generations, Horsfield orders, Strahler orders for a given tree
     # Works for diverging trees only
     # Inputs are:
@@ -112,7 +112,7 @@ def evaluate_orders(node_loc, elems):
     num_elems = len(elems)
 
     # Calculate connectivity of elements
-    elem_connect = element_connectivity_1D(node_loc, elems)
+    elem_connect = element_connectivity_1D(node_loc, elems, Nc)
     elem_upstream = elem_connect['elem_up']
     elem_downstream = elem_connect['elem_down']
 
@@ -173,15 +173,15 @@ def evaluate_orders(node_loc, elems):
 ############
 # This function is taken from placentagen, but has some modifications, because the tree from image analysis does not follow all the rules of a generated tree
 ############
-def element_connectivity_1D(node_loc, elems):
+def element_connectivity_1D(node_loc, elems, Nc):
 
     # Initialise connectivity arrays, these need to be bigger to accomodate more branches
     num_elems = len(elems)
-    elem_upstream = np.zeros((num_elems, 4), dtype=int)
-    elem_downstream = np.zeros((num_elems, 4), dtype=int)
+    elem_upstream = np.zeros((num_elems, Nc), dtype=int)
+    elem_downstream = np.zeros((num_elems, Nc), dtype=int)
 
     num_nodes = len(node_loc)
-    elems_at_node = np.zeros((num_nodes, 8), dtype=int)
+    elems_at_node = np.zeros((num_nodes, Nc), dtype=int)
 
     # determine elements that are associated with each node
     for ne in range(0, num_elems):

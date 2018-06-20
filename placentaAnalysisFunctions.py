@@ -207,6 +207,10 @@ def arrange_by_strahler_order(geom, inlet_loc):
             counter = Ne+1
         counter = counter + 1
 
+    #check for error
+    if np.sum(elems_new[Ne-2,:])==0:
+        print('Warning, not all elements assigned to new order')
+
     #assign root element in new order systems
     elems_new[Ne-1, :] = elems[0, :]
     radii_new[Ne-1, :] = radii[0]
@@ -262,8 +266,8 @@ def prune_by_order(geom, ordersAll, threshold_order):
 # Inputs: list of nodes, elements and their generation
 # Outputs: list of branch angles in radians, where the angle is the angle of a given element from its parents, and is zero if the element is a continuation of the parent
 ######
-def find_branch_angles(nodes, elems, radii, lengths, generations, orders):
-    connectivity=pg.pg_utilities.element_connectivity_1D(nodes, elems)
+def find_branch_angles(nodes, elems, radii, lengths, generations, orders, Nc):
+    connectivity=element_connectivity_1D(nodes, elems, Nc)
     elem_up=connectivity['elem_up']
     elem_down = connectivity['elem_down']
 

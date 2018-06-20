@@ -11,9 +11,9 @@ from placentaAnalysisFunctions import *
 
 #Define data to use (this is the bit that needs to be edited each time)
 csvDataFile="branch info.csv"
-inlet_loc=np.array([312,51,628]) #you need to find this manually
-conversionFactor=9.1955 #ImageJ log prints this out when you run "MySkeletonizationProcess"
-voxelSize=0.01933 #mm
+inlet_loc=np.array([281,4,215]) #you need to find this manually
+conversionFactor=22.11 #ImageJ log prints this out when you run "MySkeletonizationProcess"
+voxelSize=1 #mm #to find
 
 #Read in file
 print("Reading in Data")
@@ -28,7 +28,17 @@ geom=sort_data(data_file)
 print('Analysing Skeleton')
 geom = arrange_by_strahler_order(geom, inlet_loc)
 
-orders=evaluate_orders(geom['nodes'],geom['elems'])
+#Find Nc: The max number of elements at one node
+elems=geom['elems']
+elems=np.concatenate([np.squeeze(elems[:,1]), np.squeeze(elems[:,2])])
+elems=elems.astype(int)
+result=np.bincount(elems)
+Nc=(max(result)) +1
+if (Nc>10):
+    print('Warning, large number of elements at one node: '+str(Nc))
+    Nc=10
+
+orders=evaluate_orders(geom['nodes'],geom['elems'],Nc)
 strahler=orders['strahler']
 strahler[0]=strahler[1] #as pg doesn't find this order
 orders['strahler']=strahler
@@ -36,8 +46,8 @@ orders['strahler']=strahler
 #Prune elements by order and re-evaluate generation
 threshold_order=4
 (geom, strahler)=prune_by_order(geom, orders, threshold_order)
-orders=evaluate_orders(geom['nodes'],geom['elems'])
-(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], orders['generation'], orders['strahler'])
+orders=evaluate_orders(geom['nodes'],geom['elems'], Nc)
+(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], orders['generation'], orders['strahler'], Nc)
 
 #scale results into mm and degrees
 geom['radii']=geom['radii']*voxelSize/conversionFactor
@@ -52,7 +62,7 @@ table=summary_statistics(orders['strahler'],orders['generation'], geom['length']
 
 #3d plots
 print('Plotting')
-plotVasculature3D(geom['nodes'], geom['elems'], geom['branch_angles'],geom['radii'])
+plotVasculature3D(geom['nodes'], geom['elems'], orders['strahler'],geom['radii'])
 
 #csv files
 output=0

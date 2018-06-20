@@ -51,6 +51,16 @@ geom=sort_data(data_file)
 np.testing.assert_equal(geom['nodes'], nodes_true)
 np.testing.assert_equal(geom['elems'], elems_unordered_true)
 
+#Find Nc: The max number of elements at one node
+elems=geom['elems']
+elems=np.concatenate([np.squeeze(elems[:,1]), np.squeeze(elems[:,2])])
+elems=elems.astype(int)
+result=np.bincount(elems)
+Nc=(max(result)) +1
+if (Nc>10):
+    print('Warning, large number of elements at one node: '+str(Nc))
+    Nc=10
+
 #Arrange by strahler order
 print('\nTest Arrange by Order')
 inlet_loc=np.array([0,0,2])
@@ -60,7 +70,7 @@ geom= arrange_by_strahler_order(geom, inlet_loc)
 
 #Get order
 print('\nTest Ordering')
-orders=evaluate_orders(geom['nodes'],geom['elems'])
+orders=evaluate_orders(geom['nodes'],geom['elems'],Nc)
 strahler=orders['strahler']
 strahler[0]=strahler[1] #as pg doesn't find this order
 orders['strahler']=strahler
@@ -71,7 +81,7 @@ np.testing.assert_equal(orders['generation'], generation1_true)
 #Test prune and reorder
 threshold_order=2
 (geom,strahler)=prune_by_order(geom, orders, threshold_order)
-order2=evaluate_orders(geom['nodes'],geom['elems'])
+order2=evaluate_orders(geom['nodes'],geom['elems'], Nc)
 
 print('\nTest Prune and Re-Ordering')
 np.testing.assert_equal(order2['generation'], generation2_true)
@@ -79,7 +89,7 @@ np.testing.assert_equal(geom['elems'], elems_pruned_true)
 
 #Test angles
 print('\nTest Branch Angles')
-(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], order2['generation'], order2['strahler'])
+(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], order2['generation'], order2['strahler'],Nc)
 
 np.testing.assert_equal(np.around(geom['branch_angles'],2), np.around(angles_true,2))
 np.testing.assert_equal(np.around(geom['diam_ratio'],2), np.around(diam_ratio_true,2))

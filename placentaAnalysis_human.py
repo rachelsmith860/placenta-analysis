@@ -9,11 +9,11 @@ from placentaAnalysisFunctions import *
 # Outputs: Creates exelem and exnode files of tree, prints a table of results
 ######
 
-#Define data to use (this is the bit that needs to be edited each time)
-csvDataFile="branch info.csv"
-inlet_loc=np.array([281,4,215]) #you need to find this manually
-conversionFactor=22.11 #ImageJ log prints this out when you run "MySkeletonizationProcess"
-voxelSize=1 #mm #to find
+#Define data to use
+csvDataFile="branch info human 2.csv"
+inlet_loc=np.array([281,4,215])
+conversionFactor=22.11
+voxelSize=1 #mm #####################################to fix
 
 #Read in file
 print("Reading in Data")
@@ -24,49 +24,54 @@ data_file.columns = ['SkeletonID', 'Branchlength', 'V1x', 'V1y', 'V1z', 'V2x', '
 print('Organizing Data')
 geom=sort_data(data_file)
 
-#Find statistics for skeleton
+#Find orders for skeleton
 print('Analysing Skeleton')
 geom = arrange_by_strahler_order(geom, inlet_loc)
 
-#Find Nc: The max number of elements at one node
-elems=geom['elems']
-elems=np.concatenate([np.squeeze(elems[:,1]), np.squeeze(elems[:,2])])
-elems=elems.astype(int)
-result=np.bincount(elems)
-Nc=(max(result)) +1
-if (Nc>10):
-    print('Warning, large number of elements at one node: '+str(Nc))
-    Nc=10
+Nc=find_maximum_joins(geom['elems'])
+print(Nc)
+elem_connect=element_connectivity_1D(geom['nodes'], geom['elems'], Nc)
+orders=evaluate_orders(geom['elems'], elem_connect)
 
-orders=evaluate_orders(geom['nodes'],geom['elems'],Nc)
 strahler=orders['strahler']
-strahler[0]=strahler[1] #as pg doesn't find this order
+strahler[0]=strahler[1] #assumed
 orders['strahler']=strahler
 
-#Prune elements by order and re-evaluate generation
+#Prune elements by order and re-evaluate ordering
 threshold_order=4
-(geom, strahler)=prune_by_order(geom, orders, threshold_order)
-orders=evaluate_orders(geom['nodes'],geom['elems'], Nc)
-(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom['nodes'], geom['elems'],geom['radii'],geom['euclidean length'], orders['generation'], orders['strahler'], Nc)
+geom=prune_by_order(geom, orders['strahler'], threshold_order)
+
+Nc=find_maximum_joins(geom['elems'])
+elem_connect=element_connectivity_1D(geom['nodes'], geom['elems'], Nc)
+orders=evaluate_orders(geom['elems'], elem_connect)
+
+strahler=orders['strahler']
+strahler[0]=strahler[1] #assumed
+orders['strahler']=strahler
+
+geom['radii']=geom['radii']/conversionFactor
+radii_unscaled=np.copy(geom['radii'])
+(geom['branch_angles'],geom['diam_ratio'],geom['length_ratio']) = find_branch_angles(geom, orders, elem_connect)
 
 #scale results into mm and degrees
-geom['radii']=geom['radii']*voxelSize/conversionFactor
+geom['radii']=geom['radii']*voxelSize
 geom['length']=geom['length']*voxelSize
 geom['euclidean length']=geom['euclidean length']*voxelSize
 geom['branch_angles']=geom['branch_angles']*180/np.pi
 
 #Output Skeleton Info
 print('Output Data')
-#table
-table=summary_statistics(orders['strahler'],orders['generation'], geom['length'],geom['euclidean length'], geom['radii'],geom['branch_angles'],geom['diam_ratio'],geom['length_ratio'])
 
+#table
+table=summary_statistics(orders, geom)
 #3d plots
 print('Plotting')
-plotVasculature3D(geom['nodes'], geom['elems'], orders['strahler'],geom['radii'])
+plot_vasculature_3d(geom['nodes'], geom['elems'], orders['strahler'],geom['radii'])
 
-#csv files
-output=0
+output=1
 if output:
+
+    # csv files
     print('Writing files')
     elems=geom['elems']
     outPutData=np.column_stack([elems[:,1:3], geom['radii'], geom['branch_angles'], strahler])
@@ -75,5 +80,8 @@ if output:
     np.savetxt('NodeInfo.csv', geom['nodes'], fmt='%.4f', delimiter=',', header=" ,nodes(voxels)")
 
     #cmgui files
-    pg.export_ex_coords(geom['nodes'],'placenta','full_tree','exnode')
-    pg.export_exelem_1d(geom['elems'],'placenta','full_tree')
+    pg.export_ex_coords(geom['nodes'],'vessels','human_tree','exnode')
+    pg.export_exelem_1d(geom['elems'],'vessels','human_tree')
+    export_solution_2(orders['strahler'], 'solution', 'human_solution','orders')
+    export_solution_2(radii_unscaled, 'radii', 'human_radii','radius')
+    export_solution_2(orders['generation'], 'generations', 'human_generations', 'gen')
